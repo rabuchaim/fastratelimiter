@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""FastRateLimiter v1.0.0 - A fast and efficient rate limiter for Python."""
+"""FastRateLimiter v1.0.1 - A fast and efficient rate limiter for Python."""
 """
  ______        _     _____       _         _      _           _ _
 |  ____|      | |   |  __ \     | |       | |    (_)         (_) |
@@ -17,8 +17,8 @@
 
 """
 __appname__ = 'FastRateLimiter'
-__version__ = '1.0.0'
-__release__ = '20/May/2025'
+__version__ = '1.0.1'
+__release__ = '21/May/2025'
 
 import os, sys, threading, random, functools, bisect, ipaddress, time, socket, struct, binascii, math
 from typing import List, Dict, Iterator
@@ -118,7 +118,7 @@ class NoLimitList:
             new_list = sorted(list(filter(None,sorted(list(dict.fromkeys(new_list))))),key=lambda ip:self.__ip2int(ip.split("/")[0]))
             # get the first and last IP of the CIDR and convert them to integer. Keep 2 lists: one with the first IP and another with the last IP
             chunk_size = 100 if len(new_list) < 500000 else 1000
-            self.list_chunks = self.__split_list(no_limit_list,chunk_size)
+            self.list_chunks = self.__split_list(new_list,chunk_size)
             self.first_ip_chunks = self.__split_list([self.__ip2int(item.split("/")[0]) for item in new_list],chunk_size)
             self.last_ip_chunks = self.__split_list([int(ipaddress.ip_network(item,strict=False)[-1]) for item in new_list],chunk_size)
             self.list_index.clear()
@@ -193,7 +193,9 @@ class NoLimitList:
                 network = self.list_chunks[match_root_index][match_list_index]
             except:
                 network = None
-            return (iplong >= self.first_ip_chunks[match_root_index][match_list_index]) and (iplong <= self.last_ip_chunks[match_root_index][match_list_index]), network
+            inside_network = (iplong >= self.first_ip_chunks[match_root_index][match_list_index]) and (iplong <= self.last_ip_chunks[match_root_index][match_list_index])
+            network = None if inside_network is False else network
+            return inside_network, network
         except Exception as ERR:
             print(f"Failed at NoLimitList.check_iplong({iplong}): {str(ERR)}")
         return False, None
@@ -240,6 +242,7 @@ class FastRateLimiter():
         self.no_limit_list = NoLimitList(no_limit_list=no_limit_list,lru_cache_maxsize=lru_cache_maxsize)
         if len(self.no_limit_list.last_discarted_ips):
             self.__debug(f"NoLimitList discarted IPs/CIDRs: {self.no_limit_list.last_discarted_ips}")
+        self.__debug(f"NoLimitList valid IPs/CIDRs: {self.no_limit_list}")
         
         self.__rate_limit_cache = {}
         self.__rate_limit_blocked_last_seen: Dict[int, int] = {}  # iplong:timestamp -> last_block_second:int
@@ -481,6 +484,7 @@ class FastRateLimiter():
 
     def __call_rate_limit_per_second(self,iplong:int,ipaddr:str) -> bool:
         """Returns True if the rate limit is exceeded, False otherwise."""
+        start_time = time.monotonic()
         now = int(time.time())
         current_rate,eval_time = self.__rate_limit_cache.get(iplong,[0,0])
         try:
@@ -544,7 +548,7 @@ class FastRateLimiter():
     
     def speed_test(self,max_ips:int=500000):
         def randomipv4():
-            return int2ip(random.randint(16777216,3758096383))        
+            return self.__int2ip(random.randint(16777216,3758096383))        
         def randomipv6():
             return ':'.join([f'{random.randint(0, 0xffff):04x}' for _ in range(8)])
         self.__save_stat = self.__save_stat_disabled
@@ -575,121 +579,4 @@ class FastRateLimiter():
                 self.__save_stat = self.__save_stat_enabled_per_second
             else:
                 self.__save_stat = self.__save_stat_enabled_advanced
-        
-        
-#################################################################################################################################
-#################################################################################################################################
-
-def cError(msg): return '\033[91m'+str(msg)+'\033[0m'
-
-def int2ip(iplong):
-    return socket.inet_ntoa(struct.pack('>L', iplong))
-def ip2int(ipaddr):
-    if ipaddr.find(":") < 0:
-        return struct.unpack("!L",socket.inet_aton(ipaddr))[0]
-    else:
-        return int.from_bytes(socket.inet_pton(socket.AF_INET6,ipaddr),byteorder='big')
-def randomipv4():
-    return int2ip(random.randint(16777216,3758096383))        
-def randomipv6():
-    return ':'.join([f'{random.randint(0, 0xffff):04x}' for _ in range(8)])
-
-def print_event(ipaddr,start_time):
-    def cEven(msg):
-        return '\033[38;2;64;224;208m'+msg+'\033[0m'
-    def cOdd(msg):
-        return '\033[38;2;238;130;238m'+msg+'\033[0m'
-    if int(dt.now().second) % 2 == 0:
-        print(f"[{cEven(dt.now().strftime('%H:%M:%S.%f'))}] Accepted request #{str(counter).zfill(4)} from {ipaddr} [{'%.9f'%(time.monotonic()-start_time)}]")
-    else:
-        print(f"[{cOdd(dt.now().strftime('%H:%M:%S.%f'))}] Accepted request #{str(counter).zfill(4)} from {ipaddr} [{'%.9f'%(time.monotonic()-start_time)}]")
-    pass
-
-if __name__ == '__main__':
-    counter = 0
-    a_list = []
-
-    ip_list_v4 = [randomipv4() for i in range(100000)]
-    # for I in range(10000):
-    #     ip = ip_list_v4[random.randint(0,len(ip_list_v4)-1)]
-    #     oct = ip.split(".")
-    #     a_list.append(f"{oct[0]}.{oct[1]}.{oct[2]}.0/24")
-
-    ip_list_v6 = [randomipv6() for i in range(100000)]
-    # for I in range(10000):
-    #     ip = ip_list_v6[random.randint(0,len(ip_list_v6)-1)]
-    #     a_list.append(ip)
-
-    # ip_list = [*ip_list_v4,*ip_list_v6]
-    # a_list = ['1.2.3.4','1.1.1.1/24','1.2.3.a']
-    # rateLimit = FastRateLimiter(rate_limit=5,per=2,block_time=0,no_limit_list=['a.b.c.d','1.0.0.1','10.10.10.10/24','10.0.0.10/32'],with_stats=True)
-    rateLimit = FastRateLimiter(rate_limit=5,per=5,block_time=2,no_limit_list=a_list,with_stats=False,debug=False)
-    rateLimit.speed_test()
-    quit()
-    # a_list2 = [randomipv4() for i in range(1000)]
-    # a_list2.extend([randomipv6() for i in range(1000)])
-    # rateLimit.no_limit_list.set_list(a_list2)
-    # rateLimit.no_limit_list.add_ips([randomipv4() for i in range(1000)])
-    # rateLimit.no_limit_list.add_ips([randomipv6() for i in range(1000)])
-    # print(rateLimit.no_limit_list)
-    # rateLimit.no_limit_list.add_ip('1.2.3.4/32')
-    # # rateLimit.no_limit_list.add_ip('10.0.0.10')
-    # print(rateLimit.no_limit_list)
-    # print(rateLimit.no_limit_list.get_list())
-    # rateLimit.no_limit_list = ['1.1.1.1','2.2.2.2','3.3.3.3','8.8.8.8','9.9.9.9']
-    # print(rateLimit.no_limit_list_discarted_ips)
-    
-    # rateLimit.gc_enable(interval=60)
-    # ip_list = [randomipv4() for i in range(5000)]
-    # ip_list.extend(randomipv6() for i in range(5000))
-    
-    # ip_list = [randomipv4() for i in range(10)]
-    rand_ipv6 = randomipv6()
-    for I in range(100000000):
-        ip = ip_list[random.randint(0,len(ip_list)-1)]
-        # ip = a_list[random.randint(0,len(a_list)-1)]
-        start_time = time.monotonic()
-        # ip = random.choice(['10.0.0.10','22b6:8e71:a724:761e:11d4:1099:1c90:a976'])
-        # ip = '10.0.0.10'
-        # ip = randomipv4()
-        # ip = random.choice(['1.1.1.1','2.2.2.2','3.3.3.3','8.8.8.8','9.9.9.9'])
-        # ip = random.choice(['1.1.1.1','9.9.9.9'])
-        counter += 1
-        
-        
-        # if counter == 200:
-        #     rateLimit.block_time = 5
-        # if counter == 500:
-        #     rateLimit.block_time = 0
-        
-        # if counter % 20 == 0:
-        #     print(rateLimit.get_blocked_ips())
-            
-        if counter % 100 == 0:
-            print(f"FastRateLimiter Stats: {rateLimit.get_stats(top_items=30)}")
-            # time.sleep(5)
-
-        # if counter % 5 == 0:
-        #     print(f"FastRateLimiter CacheInfo: {rateLimit.cache_info()}")
-            
-        if rateLimit(ip):
-            print(cError(f"[{dt.now().strftime('%H:%M:%S.%f')}] Denied request #{str(counter).zfill(4)} from IP {ip} - Rate limit exceeded [{'%.9f'%(time.monotonic()-start_time)}]"))
-            # time.sleep(0.5)
-            continue
-        
-        
-        # if counter == 1000000:
-        #     print("CacheInfo: decreasing ip_list")
-        #     ip_list = ip_list[:50000]
-        #     rateLimit.__rate_limit_cache.clear()
-        #     print(rateLimit.cache_info())
-        # if counter == 2000000:
-        #     print("CacheInfo: increasing ip_list")
-        #     ip_list.extend([randomipv4() for i in range(150000)])
-        #     rateLimit.__rate_limit_cache.clear()
-        #     print(rateLimit.cache_info())
-        
-        print_event(ip,start_time)
-        # time.sleep(0.05)
-        
         
