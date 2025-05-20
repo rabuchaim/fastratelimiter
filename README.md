@@ -1,4 +1,4 @@
-# FastRateLimiter v1.0.0
+# FastRateLimiter v1.0.1
 
 `FastRateLimiter` is a high-performance and decorator-free rate limit class for Python. Features:
 
@@ -239,6 +239,17 @@ INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 ```
+
+## More examples
+
+| A PER SECOND example | An ADVANCED MODE example | 
+| ------------------------------------- | ------------- | 
+|<img src="https://raw.githubusercontent.com/rabuchaim/fastratelimiter/refs/heads/main/fastratelimiter_04.png" width="600" />|<img src="https://raw.githubusercontent.com/rabuchaim/fastratelimiter/refs/heads/main/fastratelimiter_05.png" width="600" />| 
+
+| FastRateLimiter Blocked IPs and Stats | FastRateLimiter Cache Info | 
+| ------------------------------------- | ------------- | 
+|<img src="https://raw.githubusercontent.com/rabuchaim/fastratelimiter/refs/heads/main/fastratelimiter_06.png" width="600" />|<img src="https://raw.githubusercontent.com/rabuchaim/fastratelimiter/refs/heads/main/fastratelimiter_07.png" width="600" />| 
+
 
 ## Block Time Precision
 
