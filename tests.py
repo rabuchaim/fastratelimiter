@@ -50,8 +50,9 @@ if __name__ == '__main__':
 
     ip_list = [*ip_list_v4,*ip_list_v6]
     a_list = ['1.2.3.4','1.1.1.1/24','1.2.3.a','10.0.0.0/8']
+    a_list = ['174.77.160.0/24']
     # rateLimit = FastRateLimiter(rate_limit=5,per=2,block_time=0,no_limit_list=['a.b.c.d','1.0.0.1','10.10.10.10/24','10.0.0.10/32'],with_stats=True)
-    rateLimit = FastRateLimiter(rate_limit=3,per=1,block_time=2,no_limit_list=a_list,with_stats=True,debug=True)
+    rateLimit = FastRateLimiter(rate_limit=3,per=1,block_time=2,no_limit_list=a_list,with_stats=True,debug=False)
     # rateLimit.speed_test()
     # quit()
     # a_list2 = [randomipv4() for i in range(1000)]
@@ -75,10 +76,10 @@ if __name__ == '__main__':
 
     # rand_ipv6 = randomipv6()
     for I in range(100000000):
-        ip = ip_list[random.randint(0,len(ip_list)-1)]
+        # ip = ip_list[random.randint(0,len(ip_list)-1)]
         # ip = a_list[random.randint(0,len(a_list)-1)]
         start_time = time.monotonic()
-        # ip = random.choice(['10.0.0.10','1.2.3.4','1.1.1.1','2.2.2.2','3.3.3.3'])
+        ip = random.choice(['174.77.160.10','10.0.0.10','1.2.3.4','1.1.1.1','2.2.2.2','3.3.3.3'])
         # ip = '10.0.0.10'
         # ip = randomipv4()
         # ip = random.choice(['1.1.1.1','2.2.2.2','3.3.3.3','8.8.8.8','9.9.9.9'])
