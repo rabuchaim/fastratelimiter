@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""FastRateLimiter v1.0.1 - A fast and efficient rate limiter for Python."""
+"""FastRateLimiter v1.0.2 - A fast and efficient rate limiter for Python."""
 """
  ______        _     _____       _         _      _           _ _
 |  ____|      | |   |  __ \     | |       | |    (_)         (_) |
@@ -17,10 +17,10 @@
 
 """
 __appname__ = 'FastRateLimiter'
-__version__ = '1.0.1'
-__release__ = '21/May/2025'
+__version__ = '1.0.2'
+__release__ = '22/May/2025'
 
-import os, sys, threading, random, functools, bisect, ipaddress, time, socket, struct, binascii, math
+import os, sys, threading, random, functools, bisect, ipaddress, time, socket, struct, math
 from typing import List, Dict, Iterator
 from collections import namedtuple
 from datetime import datetime as dt
@@ -34,7 +34,7 @@ class NoLimitList:
        by Ricardo Abuchaim - ricardoabuchaim@gmail.com"""
     def __init__(self,no_limit_list:List[str],lru_cache_maxsize:int=512):
         self.last_discarted_ips = []
-        self.list_chunks, self.first_ip_chunks, self.last_ip_chunks, self.list_index = [], [], [], []
+        self.__list_chunks, self.__first_ip_chunks, self.__last_ip_chunks, self.__list_index = [], [], [], []
         self.__lru_cache_maxsize = lru_cache_maxsize
         if self.__lru_cache_maxsize > 0:
             self.check_iplong = functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.check_iplong)
@@ -56,28 +56,32 @@ class NoLimitList:
     def __repr__(self):
         return repr(self.__data)
     def __clear_check_ip_cache(self):
-        if self.__lru_cache_maxsize > 0:
-            self.check_iplong.cache_clear()
-            self.check_ipaddr.cache_clear()
+        try:
+            if self.__lru_cache_maxsize > 0:
+                self.check_iplong.cache_clear()
+                self.check_ipaddr.cache_clear()
+        except Exception:
+            pass
     def __ip2int(self,ipaddr:str)->int:
         """Converts an IPv4/IPv6 address to an integer. (Elapsed average time: 0.000001)"""
         try:
             return struct.unpack("!L",socket.inet_aton(ipaddr.strip()))[0]
-        except:
+        except Exception:
             try:
                 return int.from_bytes(socket.inet_pton(socket.AF_INET6,ipaddr.strip()),byteorder='big')
-            except: pass
+            except Exception:
+                pass
         return 0
     def __int2ip(self,iplong:int)->str:
-        """
-        Convert an integer to IP Address
-        """    
+        """Convert an integer to IP Address (IPv4 or IPv6). For IPv6, returns the full expanded zero-padded form. """
         try:
-            if iplong < 2**32: # max ipv4
-                return socket.inet_ntoa(struct.pack('>L', iplong))
+            if iplong < 2**32:  # MAX IPv4
+                return socket.inet_ntoa(struct.pack('>L',iplong))
             else:
-                return socket.inet_ntop(socket.AF_INET6, binascii.unhexlify(hex(iplong)[2:].zfill(32)))
-        except Exception as ERR:
+                ip_bytes = iplong.to_bytes(16,byteorder='big')
+                hextets = [f"{(ip_bytes[i] << 8 | ip_bytes[i+1]):04x}" for i in range(0,16,2)]
+                return ':'.join(hextets)
+        except Exception:
             return None
     def __is_valid_cidr(self,cidr:str):
         """Check if a CIDR is valid. (Elapsed average time: 0.000007)
@@ -87,7 +91,7 @@ class NoLimitList:
         try: 
             ipaddress.ip_network(cidr.strip(),strict=True)
             return True
-        except: 
+        except Exception:
             return False
     def __is_valid_ip(self,ipaddr:str)->bool:
         """Check if an IP address is valid. Accepts IP or CIDR. (Elapsed average time: 0.000001)"""
@@ -109,21 +113,25 @@ class NoLimitList:
         if len(new_list) == 0:
             return []
         else:
-            # normalize the list of IPs in cidr format and test if the IP is valid
-            new_list = [self.__get_cidr(item) for item in new_list]
-            # remove invalid CIDRs from the list (ex: 10.0.0.10/8 is INVALID, 10.0.0.0/8 is VALID, 10.0.0.10/32 is VALID)
-            self.last_discarted_ips = [cidr for cidr in new_list if self.__is_valid_cidr(cidr) == False]
-            new_list = list(set(new_list) - set(self.last_discarted_ips))
-            # sort the list of IPs in ascending order of IP, remove duplicates and blank items
-            new_list = sorted(list(filter(None,sorted(list(dict.fromkeys(new_list))))),key=lambda ip:self.__ip2int(ip.split("/")[0]))
-            # get the first and last IP of the CIDR and convert them to integer. Keep 2 lists: one with the first IP and another with the last IP
-            chunk_size = 100 if len(new_list) < 500000 else 1000
-            self.list_chunks = self.__split_list(new_list,chunk_size)
-            self.first_ip_chunks = self.__split_list([self.__ip2int(item.split("/")[0]) for item in new_list],chunk_size)
-            self.last_ip_chunks = self.__split_list([int(ipaddress.ip_network(item,strict=False)[-1]) for item in new_list],chunk_size)
-            self.list_index.clear()
-            for item in self.first_ip_chunks:
-                self.list_index.append(item[0])
+            try:
+                # normalize the list of IPs in cidr format and test if the IP is valid
+                new_list = [self.__get_cidr(item) for item in new_list]
+                # remove invalid CIDRs from the list (ex: 10.0.0.10/8 is INVALID, 10.0.0.0/8 is VALID, 10.0.0.10/32 is VALID)
+                self.last_discarted_ips = [cidr for cidr in new_list if not self.__is_valid_cidr(cidr)]
+                new_list = list(set(new_list) - set(self.last_discarted_ips))
+                # sort the list of IPs in ascending order of IP, remove duplicates and blank items
+                new_list = sorted(list(filter(None,sorted(list(dict.fromkeys(new_list))))),key=lambda ip:self.__ip2int(ip.split("/")[0]))
+                # get the first and last IP of the CIDR and convert them to integer. Keep 2 lists: one with the first IP and another with the last IP
+                chunk_size = 100 if len(new_list) < 500000 else 1000
+                self.__list_chunks = self.__split_list(new_list,chunk_size)
+                self.__first_ip_chunks = self.__split_list([self.__ip2int(item.split("/")[0]) for item in new_list],chunk_size)
+                self.__last_ip_chunks = self.__split_list([int(ipaddress.ip_network(item,strict=False)[-1]) for item in new_list],chunk_size)
+                self.__list_index.clear()
+                for item in self.__first_ip_chunks:
+                    self.__list_index.append(item[0])
+            except Exception as ERR: 
+                print(str(ERR))
+                pass            
         self.__clear_check_ip_cache()
         return new_list
     def set_list(self,items:List[str]):
@@ -134,17 +142,23 @@ class NoLimitList:
         return list(self.__data)  # retorna cópia
     def add_ip(self,ipaddr:str):
         """Add an ip address or CIDR to no limit list"""
-        ip = ipaddr.strip()
-        if ip and ip not in self.__data:
-            self.__data.append(ip)
-            self.__data = self.__process_list(self.__data)
-    def add_ips(self,ipaddr_list:List[str]):
-        """Add a list of ip addressess or CIDRs to no limit list"""
-        for ip in ipaddr_list:
-            ip = ip.strip()
+        try:
+            ip = ipaddr.strip()
             if ip and ip not in self.__data:
                 self.__data.append(ip)
-        self.__data = self.__process_list(self.__data)
+                self.__data = self.__process_list(self.__data)
+        except Exception as ERR: 
+            print(f"Exception at add_ip: {str(ERR)}")
+    def add_ips(self,ipaddr_list:List[str]):
+        """Add a list of ip addressess or CIDRs to no limit list"""
+        try:
+            for ip in ipaddr_list:
+                ip = ip.strip()
+                if ip and ip not in self.__data:
+                    self.__data.append(ip)
+            self.__data = self.__process_list(self.__data)
+        except Exception as ERR: 
+            print(f"Exception at add_ips: {str(ERR)}")
     def remove_ip(self,ipaddr:str):
         """Remove an ip address or a CIDR from no limit list"""
         try:
@@ -152,17 +166,21 @@ class NoLimitList:
             if ip and ip in self.__data:
                 self.__data.remove(ip)
                 self.__data = self.__process_list(self.__data)
-        except: pass
+        except Exception as ERR: 
+            print(f"Exception at remove_ip: {str(ERR)}")
     def remove_ips(self,ipaddr_list:List[str]):
         """Remove a list of ip addressess or a CIDRs from no limit list"""
         try:
             for ip in ipaddr_list:
                 ip = ip.strip()
                 if ip and ip in self.__data:
-                    try: self.__data.remove(ip)
-                    except: pass
+                    try: 
+                        self.__data.remove(ip)
+                    except Exception:
+                        pass
             self.__data = self.__process_list(self.__data)
-        except: pass
+        except Exception as ERR: 
+            print(f"Exception at remove_ips: {str(ERR)}")
     def check_ipaddr(self,ipaddr:str)->bool:
         """Check if an IP address is in the no limit list. Returns a tuple with the search response (True or False) and if True, 
            it also returns the network that the IP fits into, otherwise it returns None. (Elapsed average time: 0.000006)
@@ -187,13 +205,13 @@ class NoLimitList:
         if self.__data == []:
             return False, None
         try:
-            match_root_index = bisect.bisect_right(self.list_index,iplong)-1
-            match_list_index = bisect.bisect_right(self.first_ip_chunks[match_root_index],iplong)-1
+            match_root_index = bisect.bisect_right(self.__list_index,iplong)-1
+            match_list_index = bisect.bisect_right(self.__first_ip_chunks[match_root_index],iplong)-1
             try:
-                network = self.list_chunks[match_root_index][match_list_index]
-            except:
+                network = self.__list_chunks[match_root_index][match_list_index]
+            except Exception:
                 network = None
-            inside_network = (iplong >= self.first_ip_chunks[match_root_index][match_list_index]) and (iplong <= self.last_ip_chunks[match_root_index][match_list_index])
+            inside_network = (iplong >= self.__first_ip_chunks[match_root_index][match_list_index]) and (iplong <= self.__last_ip_chunks[match_root_index][match_list_index])
             network = None if inside_network is False else network
             return inside_network, network
         except Exception as ERR:
@@ -217,9 +235,9 @@ class FastRateLimiter():
 
         For Debug :
         
-            export FASTRATELIMITER_DEBUG=1
+            export FASTRATELIMITER_DEBUG=1    
         """
-        if debug == True or os.environ.get("FASTRATELIMITER_DEBUG","") == "1":
+        if debug is True or os.environ.get("FASTRATELIMITER_DEBUG","") == "1":
             self.__debug = self.__debug_enabled
         
         if cache_cleanup_interval < 2:
@@ -269,7 +287,7 @@ class FastRateLimiter():
         """Converts an IPv4/IPv6 address to an integer. (Elapsed average time: 0.000001)"""
         try:
             return struct.unpack("!L",socket.inet_aton(ipaddr.strip()))[0]
-        except:
+        except Exception:
             try:
                 return int.from_bytes(socket.inet_pton(socket.AF_INET6,ipaddr.strip()),byteorder='big')
             except Exception as ERR:
@@ -279,19 +297,21 @@ class FastRateLimiter():
         """Converts an IPv4/IPv6 address to an integer."""
         try:
             return self.__ip2int_raise_exception(ipaddr)
-        except:
+        except Exception:
             return 0
 
     def __int2ip(self,iplong:int)->str:
-        """
-        Convert an integer to IP Address
-        """    
+        """Convert an integer to IP Address (IPv4 or IPv6). For IPv6, returns the full expanded zero-padded form. """
         try:
-            if iplong < 2**32: # max ipv4
-                return socket.inet_ntoa(struct.pack('>L', iplong))
-            else:
-                return socket.inet_ntop(socket.AF_INET6, binascii.unhexlify(hex(iplong)[2:].zfill(32)))
-        except Exception as ERR:
+            if iplong < 2**32:  # MAX IPv4
+                return socket.inet_ntoa(struct.pack('>L',iplong))
+            else:  # IPv6
+                # Converte int em 16 bytes
+                ip_bytes = iplong.to_bytes(16,byteorder='big')
+                # Quebra os 16 bytes em 8 blocos de 2 bytes (16 bits cada)
+                hextets = [f"{(ip_bytes[i] << 8 | ip_bytes[i+1]):04x}" for i in range(0,16,2)]
+                return ':'.join(hextets)
+        except Exception:
             return None
 
     @property
@@ -333,7 +353,7 @@ class FastRateLimiter():
         """Returns the block time in seconds."""
         return self.__block_time
 
-    @per.setter
+    @block_time.setter
     def block_time(self,new_block_time:int):
         if new_block_time < 0:
             raise ValueError("The block time must be equal or greater than 0 second.") from None
@@ -372,7 +392,7 @@ class FastRateLimiter():
             try:
                 mem_in_use = next(int(line.split()[1])/1024 for line in open(f'/proc/{os.getpid()}/status','r') if line.startswith("VmRSS:"))
                 return math.trunc((mem_in_use)*100)/100
-            except:
+            except Exception:
                 return 0.0
         CacheInfo = namedtuple("CacheInfo", ["items", "size_in_kb", "memory_in_mb"])
         return CacheInfo(len(self.__rate_limit_cache), math.trunc((sys.getsizeof(self.__rate_limit_cache)/1024)*100)/100, get_mem_in_use())
@@ -381,6 +401,7 @@ class FastRateLimiter():
         """Clears the IP rate limit cache."""
         with self.__lock:
             self.__rate_limit_cache.clear()
+            self.__rate_limit_blocked_last_seen.clear()
         return True
         
     def __save_stat(self,ip:int):...
@@ -413,7 +434,9 @@ class FastRateLimiter():
         def int_to_ipv4(iplong):
             return socket.inet_ntoa(struct.pack('>L', iplong))
         def int_to_ipv6(iplong):
-            return socket.inet_ntop(socket.AF_INET6, binascii.unhexlify(hex(iplong)[2:].zfill(32)))
+            ip_bytes = iplong.to_bytes(16,byteorder='big')
+            hextets = [f"{(ip_bytes[i] << 8 | ip_bytes[i+1]):04x}" for i in range(0,16,2)]
+            return ':'.join(hextets)
         top_items = 100 if top_items > 100 else top_items
         MAX_IPv4 = 4294967295
         try:
@@ -552,7 +575,10 @@ class FastRateLimiter():
         def randomipv6():
             return ':'.join([f'{random.randint(0, 0xffff):04x}' for _ in range(8)])
         self.__save_stat = self.__save_stat_disabled
-        ipaddr_list = [random.choice([randomipv4(),randomipv6()]) for I in range(max_ips)]
+        start_time = time.monotonic()
+        print(f">>> Creating an IP addresses list with {max_ips} randomic IPv4/IPv6 addressess...",end="")
+        ipaddr_list = [random.choice([randomipv4(),randomipv6()]) for _ in range(max_ips)]
+        print(f"\r>>> IP addresses list with {max_ips} randomic IPv4/IPv6 addressess done in {'%.2f'%(time.monotonic()-start_time)} seconds")
         ##──── FIRST TEST SHOWING RESULT OUTPUT ──────────────────────────────────────────────────────────────────────────────────────────
         self.cache_clear()
         start_time = time.monotonic()
@@ -563,7 +589,7 @@ class FastRateLimiter():
         total_time_spent = time.monotonic() - start_time
         current_lookups_per_second = max_ips / total_time_spent
         print("\r  > Current speed: %.2f calls per second (%s IPs with an average of %.9f seconds per call) "
-              f"[%.5f sec]"%(current_lookups_per_second,'{:,d}'.format(max_ips).replace(',','.'),total_time_spent / max_ips,time.monotonic()-start_time))
+              "[%.5f sec]"%(current_lookups_per_second,'{:,d}'.format(max_ips).replace(',','.'),total_time_spent / max_ips,time.monotonic()-start_time))
         ##──── SECOND TEST WITH NO OUTPUT ────────────────────────────────────────────────────────────────────────────────────────────────
         self.cache_clear()
         start_time = time.monotonic()
@@ -573,7 +599,7 @@ class FastRateLimiter():
         total_time_spent = time.monotonic() - start_time
         current_lookups_per_second = max_ips / total_time_spent
         print("\r  > Current speed: %.2f calls per second (%s IPs with an average of %.9f seconds per call) "
-              f"[%.5f sec]"%(current_lookups_per_second,'{:,d}'.format(max_ips).replace(',','.'),total_time_spent / max_ips,time.monotonic()-start_time))
+              "[%.5f sec]"%(current_lookups_per_second,'{:,d}'.format(max_ips).replace(',','.'),total_time_spent / max_ips,time.monotonic()-start_time))
         if self.__with_stats:
             if self.__per == 1 and self.__block_time == 0:
                 self.__save_stat = self.__save_stat_enabled_per_second

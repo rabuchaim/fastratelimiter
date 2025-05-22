@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""FastRateLimiter v1.0.1 - A fast and efficient rate limiter for Python."""
+"""FastRateLimiter v1.0.2 - A fast and efficient rate limiter for Python."""
 """
  ______        _     _____       _         _      _           _ _
 |  ____|      | |   |  __ \     | |       | |    (_)         (_) |
@@ -17,7 +17,7 @@
 
 """
 __appname__ = 'FastRateLimiter'
-__version__ = '1.0.1'
-__release__ = '21/May/2025'
+__version__ = '1.0.2'
+__release__ = '22/May/2025'
 
 from .fastratelimiter import *
