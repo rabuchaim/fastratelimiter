@@ -1,4 +1,4 @@
-# FastRateLimiter v1.0.1
+# FastRateLimiter v1.0.2
 
 `FastRateLimiter` is a high-performance and decorator-free rate limit class for Python. Features:
 
@@ -40,10 +40,14 @@ else:
 
 - No external dependencies, is Pure Python!
 
-<!-- ```
-What's new in v1.0.1 - xx/xxx/2025
-- xxxxxxx
-``` -->
+---
+
+```
+What's new in v1.0.2 - 22/May/2025
+- Fix in @block_time.setter. Impacted those who tried to change the block_time at runtime. 
+- Fix in __int2ip functions, now all IPv6 returns the full expanded zero-padded form. Only impacted my unit test.
+- I hid some internal lists of the NoLimitList list-type object.
+```
 
 ---
 
@@ -77,6 +81,7 @@ For most uses, you do not need to change any class parameters.
 | `debug`                               | `bool`        | `False`                     | Enable the debug messages. When enabled, this parameter overrides the checking of the FASTRATELIMITER_DEBUG environment variable. |
 
 For debugging, export the environment variable like below:
+
 
 ```export FASTRATELIMITER_DEBUG=1```
 
