@@ -1,4 +1,4 @@
-# FastRateLimiter v1.0.2
+# FastRateLimiter v1.0.3
 
 `FastRateLimiter` is a high-performance and decorator-free rate limit class for Python. Features:
 
@@ -43,6 +43,11 @@ else:
 ---
 
 ```
+What's new in v1.0.3 - 22/Jun/2025
+- Only cosmetic changes, nothing that impacts functionality
+- Fix in speed_test() function
+- Improvements to the NoLimitList class
+
 What's new in v1.0.2 - 22/May/2025
 - Fix in @block_time.setter. Impacted those who tried to change the block_time at runtime. 
 - Fix in __int2ip functions, now all IPv6 returns the full expanded zero-padded form. Only impacted my unit test.
