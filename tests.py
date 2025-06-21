@@ -4,6 +4,7 @@
 from fastratelimiter import FastRateLimiter
 from datetime import datetime as dt
 import socket, struct, time, random
+import tracemalloc
 
 #################################################################################################################################
 #################################################################################################################################
@@ -34,26 +35,33 @@ def print_event(ipaddr,start_time):
     pass
 
 if __name__ == '__main__':
+    # tracemalloc.start()
     counter = 0
     a_list = []
 
     ip_list_v4 = [randomipv4() for i in range(1000)]
-    # for I in range(10000):
+    # for I in range(2000000):
     #     ip = ip_list_v4[random.randint(0,len(ip_list_v4)-1)]
     #     oct = ip.split(".")
     #     a_list.append(f"{oct[0]}.{oct[1]}.{oct[2]}.0/24")
 
     ip_list_v6 = [randomipv6() for i in range(1000)]
-    # for I in range(10000):
+    # for I in range(2500):
     #     ip = ip_list_v6[random.randint(0,len(ip_list_v6)-1)]
     #     a_list.append(ip)
 
     ip_list = [*ip_list_v4,*ip_list_v6]
     a_list = ['1.2.3.4','1.1.1.1/24','1.2.3.a','10.0.0.0/8']
-    a_list = ['174.77.160.0/24']
+    # a_list = ['174.77.160.0/24','10.0.0.0/8']
+    # a_list = []
     # rateLimit = FastRateLimiter(rate_limit=5,per=2,block_time=0,no_limit_list=['a.b.c.d','1.0.0.1','10.10.10.10/24','10.0.0.10/32'],with_stats=True)
-    rateLimit = FastRateLimiter(rate_limit=3,per=1,block_time=2,no_limit_list=a_list,with_stats=True,debug=False)
-    # rateLimit.speed_test()
+    rateLimit = FastRateLimiter(rate_limit=2,per=3,block_time=2,no_limit_list=a_list,with_stats=False,debug=False)
+    # rateLimit.speed_test(100000)
+    # quit()
+    # current, peak = tracemalloc.get_traced_memory()
+    # print(f"Memória atual usada: {current / 1024:.1f} KB")
+    # print(f"Pico de memória: {peak / 1024:.1f} KB")
+    # tracemalloc.stop()  # Para o rastreamento
     # quit()
     # a_list2 = [randomipv4() for i in range(1000)]
     # a_list2.extend([randomipv6() for i in range(1000)])
@@ -75,29 +83,31 @@ if __name__ == '__main__':
     # ip_list = [randomipv4() for i in range(10)]
 
     # rand_ipv6 = randomipv6()
-    for I in range(100000000):
-        # ip = ip_list[random.randint(0,len(ip_list)-1)]
+    
+    
+    for I in range(100000):
+        ip = ip_list[random.randint(0,len(ip_list)-1)]
         # ip = a_list[random.randint(0,len(a_list)-1)]
         start_time = time.monotonic()
-        ip = random.choice(['174.77.160.10','10.0.0.10','1.2.3.4','1.1.1.1','2.2.2.2','3.3.3.3'])
+        # ip = random.choice(['174.77.160.10','10.0.0.10','1.2.3.4','1.1.1.1','2.2.2.2','3.3.3.3'])
         # ip = '10.0.0.10'
         # ip = randomipv4()
         # ip = random.choice(['1.1.1.1','2.2.2.2','3.3.3.3','8.8.8.8','9.9.9.9'])
         # ip = random.choice(['1.1.1.1','9.9.9.9'])
         counter += 1
         
-        if counter == 5000:
-            quit()
+        # if counter == 5000:
+        #     quit()
         # if counter == 200:
         #     rateLimit.block_time = 5
         # if counter == 500:
         #     rateLimit.block_time = 0
         
-        if counter % 200 == 0:
-            print(f"FastRateLimiter Blocked IPs: {rateLimit.get_blocked_ips()}")
+        # if counter % 200 == 0:
+        #     print(f"FastRateLimiter Blocked IPs: {rateLimit.get_blocked_ips()}")
             
-        if counter % 100 == 0:
-            print(f"FastRateLimiter Stats: {rateLimit.get_stats(top_items=30)}")
+        # if counter % 100 == 0:
+        #     print(f"FastRateLimiter Stats: {rateLimit.get_stats(top_items=30)}")
             # time.sleep(5)
 
         # if counter % 5 == 0:
@@ -121,5 +131,10 @@ if __name__ == '__main__':
         
         print_event(ip,start_time)
         # time.sleep(0.01)
-        
+         
+    # current, peak = tracemalloc.get_traced_memory()
+    # print(f"Memória atual usada: {current / 1024:.1f} KB")
+    # print(f"Pico de memória: {peak / 1024:.1f} KB")
+
+    # tracemalloc.stop()  # Para o rastreamento
         

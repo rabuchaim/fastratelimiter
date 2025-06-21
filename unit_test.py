@@ -3,7 +3,15 @@ import unittest, random, socket, struct, time
 from fastratelimiter import FastRateLimiter
 
 def int2ip(iplong):
-    return socket.inet_ntoa(struct.pack('>L', iplong))
+    try:
+        if iplong < 2**32:  # MAX IPv4
+            return socket.inet_ntoa(struct.pack('>L',iplong))
+        else:
+            ip_bytes = iplong.to_bytes(16,byteorder='big')
+            hextets = [f"{(ip_bytes[i] << 8 | ip_bytes[i+1]):04x}" for i in range(0,16,2)]
+            return ':'.join(hextets)
+    except Exception:
+        return None
 def ip2int(ipaddr):
     if ipaddr.find(":") < 0:
         return struct.unpack("!L",socket.inet_aton(ipaddr))[0]
@@ -52,7 +60,7 @@ class TestFastRateLimiter(unittest.TestCase):
         rate_limiter.block_time = 2
         self.assertEqual(len(rate_limiter.get_stats()),0)
         ipaddr_v4 = randomipv4()
-        for I in range(6):
+        for I in range(8):
             result = rate_limiter(ipaddr_v4)
         self.assertTrue(result)
         self.assertIn(ipaddr_v4,rate_limiter.get_blocked_ips())
