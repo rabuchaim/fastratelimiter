@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='fastratelimiter',
-    version='1.0.2',
+    version='1.0.3',
     description="FastRateLimiter is a high-performance, decorator-free rate limiter for Python. Compatible with any web framework, ultra-fast (<0.00001s), supports IPv4/IPv6 simultaneously, has per-second and advanced limits, whitelisting capabilities, precise block/release timing (in milliseconds), and full customization — all in pure Python.",
     url='https://github.com/rabuchaim/fastratelimiter',
     author='Ricardo Abuchaim',
