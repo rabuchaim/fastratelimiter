@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""FastRateLimiter v1.0.2 - A fast and efficient rate limiter for Python."""
+"""FastRateLimiter v1.0.3 - A fast and efficient rate limiter for Python."""
 """
  ______        _     _____       _         _      _           _ _
 |  ____|      | |   |  __ \     | |       | |    (_)         (_) |
@@ -17,8 +17,8 @@
 
 """
 __appname__ = 'FastRateLimiter'
-__version__ = '1.0.2'
-__release__ = '22/May/2025'
+__version__ = '1.0.3'
+__release__ = '22/Jun/2025'
 
 import os, sys, threading, random, functools, bisect, ipaddress, time, socket, struct, math
 from typing import List, Dict, Iterator
@@ -32,19 +32,24 @@ class NoLimitList:
     A list with 10000 IP/CIDR (IPv4 and IPv6) took 0.03 to be processed. The verification is around 0.000005 regardless of the list size.
        
        by Ricardo Abuchaim - ricardoabuchaim@gmail.com"""
-    def __init__(self,no_limit_list:List[str],lru_cache_maxsize:int=512):
+    def __init__(self,no_limit_list:List[str],lru_cache_maxsize:int=0,debug:bool=False):
         self.last_discarted_ips = []
+        self.__debug = debug
         self.__list_chunks, self.__first_ip_chunks, self.__last_ip_chunks, self.__list_index = [], [], [], []
         self.__lru_cache_maxsize = lru_cache_maxsize
         if self.__lru_cache_maxsize > 0:
             self.check_iplong = functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.check_iplong)
             self.check_ipaddr = functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.check_ipaddr)
+            self.is_valid_ipaddr = functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.is_valid_ipaddr)
+            self.is_valid_iplong = functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.is_valid_iplong)
+            self.is_valid_cidr =  functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.is_valid_cidr)
             self.__get_cidr = functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.__get_cidr)
-            self.__is_valid_ip = functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.__is_valid_ip)
-            self.__is_valid_cidr =  functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.__is_valid_cidr)
             self.__ip2int =  functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.__ip2int)
             self.__int2ip =  functools.lru_cache(maxsize=self.__lru_cache_maxsize)(self.__int2ip)
         self.__data:List[str] = self.__process_list(no_limit_list)
+    def debug(self,msg:str):
+        """Debug method to print messages. If debug is True, it will print the message."""
+        print(msg,flush=True) if self.__debug else None
     def __getitem__(self,index:int) -> str:
         return self.__data[index]
     def __iter__(self)->Iterator[str]:
@@ -62,6 +67,22 @@ class NoLimitList:
                 self.check_ipaddr.cache_clear()
         except Exception:
             pass
+    def is_valid_ipaddr(self,ipaddr:str)->bool:
+        """Check if an IP address is valid. Accepts IPv4, IPv6 or any CIDR. (Elapsed average time: 0.000001)"""
+        return self.__ip2int(ipaddr) != 0
+    def is_valid_iplong(self,iplong:int)->bool:
+        """Check if an integer is a valid IPv4/IPv6 address. (Elapsed average time: 0.000001)"""
+        return self.__int2ip(iplong) is not None
+    def is_valid_cidr(self,cidr:str):
+        """Check if a CIDR is valid. (Elapsed average time: 0.000007)
+        
+        Ex: 10.0.0.10/8 is INVALID, 10.0.0.0/8 is VALID, 10.0.0.10/32 is VALID
+        c1a5:9ba4:8d92:636e:60fd:8756:430b:0000/64 is INVALID, c1a5:9ba4:8d92:636e::/64 is VALID"""
+        try: 
+            ipaddress.ip_network(cidr.strip(),strict=True)
+            return True
+        except Exception:
+            return False
     def __ip2int(self,ipaddr:str)->int:
         """Converts an IPv4/IPv6 address to an integer. (Elapsed average time: 0.000001)"""
         try:
@@ -83,19 +104,6 @@ class NoLimitList:
                 return ':'.join(hextets)
         except Exception:
             return None
-    def __is_valid_cidr(self,cidr:str):
-        """Check if a CIDR is valid. (Elapsed average time: 0.000007)
-        
-        Ex: 10.0.0.10/8 is INVALID, 10.0.0.0/8 is VALID, 10.0.0.10/32 is VALID
-        c1a5:9ba4:8d92:636e:60fd:8756:430b:0000/64 is INVALID, c1a5:9ba4:8d92:636e::/64 is VALID"""
-        try: 
-            ipaddress.ip_network(cidr.strip(),strict=True)
-            return True
-        except Exception:
-            return False
-    def __is_valid_ip(self,ipaddr:str)->bool:
-        """Check if an IP address is valid. Accepts IP or CIDR. (Elapsed average time: 0.000001)"""
-        return self.__ip2int(ipaddr.strip()) != 0
     def __get_cidr(self,ipaddr:str):
         """Converts an IP address to CIDR format. Add /32 to the IPv4 address if it is not present or add /128 to the IPv6 address if it is not present. (Elapsed average time 0.0000006)"""
         ip = ipaddr.strip()
@@ -106,32 +114,49 @@ class NoLimitList:
         for i in range(0, len(a_list), n):
             sliced_lists.append(a_list[i:i + n])
         return sliced_lists
+    def __find_balanced_chunk_size(self,list_size,min_chunk_size:int=100,max_chunk_size:int=5000):
+        """Finds a balanced chunk size for splitting a list of size n into chunks,
+           such that the difference between the number of chunks and the chunk size is minimized."""
+        if list_size <= min_chunk_size:
+            return min_chunk_size  # if the list is smaller than the minimum chunk size, return the list size
+        best_chunk_size = 1
+        best_diff = float('inf')
+        for chunk_size in range(1,max_chunk_size+1):
+            q = math.ceil(list_size/chunk_size)
+            diff = abs(chunk_size-q)
+            if diff <= 1:  # we find the best value!
+                return chunk_size
+            elif diff < best_diff:
+                best_diff = diff
+                best_chunk_size = chunk_size
+        return best_chunk_size
     def __process_list(self,no_limit_list:List[str])->List[str]:
         """Process the no_limit_list"""
         self.last_discarted_ips.clear()
         new_list = list(set(no_limit_list)) # remove duplicates
         if len(new_list) == 0:
             return []
-        else:
-            try:
-                # normalize the list of IPs in cidr format and test if the IP is valid
-                new_list = [self.__get_cidr(item) for item in new_list]
-                # remove invalid CIDRs from the list (ex: 10.0.0.10/8 is INVALID, 10.0.0.0/8 is VALID, 10.0.0.10/32 is VALID)
-                self.last_discarted_ips = [cidr for cidr in new_list if not self.__is_valid_cidr(cidr)]
-                new_list = list(set(new_list) - set(self.last_discarted_ips))
-                # sort the list of IPs in ascending order of IP, remove duplicates and blank items
-                new_list = sorted(list(filter(None,sorted(list(dict.fromkeys(new_list))))),key=lambda ip:self.__ip2int(ip.split("/")[0]))
-                # get the first and last IP of the CIDR and convert them to integer. Keep 2 lists: one with the first IP and another with the last IP
-                chunk_size = 100 if len(new_list) < 500000 else 1000
-                self.__list_chunks = self.__split_list(new_list,chunk_size)
-                self.__first_ip_chunks = self.__split_list([self.__ip2int(item.split("/")[0]) for item in new_list],chunk_size)
-                self.__last_ip_chunks = self.__split_list([int(ipaddress.ip_network(item,strict=False)[-1]) for item in new_list],chunk_size)
-                self.__list_index.clear()
-                for item in self.__first_ip_chunks:
-                    self.__list_index.append(item[0])
-            except Exception as ERR: 
-                print(str(ERR))
-                pass            
+        try:
+            # normalize the list of IPs in cidr format and test if the IP is valid
+            new_list = [self.__get_cidr(item) for item in new_list]
+            # remove invalid CIDRs from the list (ex: 10.0.0.10/8 is INVALID, 10.0.0.0/8 is VALID, 10.0.0.10/32 is VALID)
+            self.last_discarted_ips = [cidr for cidr in new_list if not self.is_valid_cidr(cidr)]
+            new_list = list(set(new_list) - set(self.last_discarted_ips))
+            # sort the list of IPs in ascending order of IP, remove duplicates and blank items
+            if len(new_list) == 0:
+                return []
+            new_list = sorted(list(filter(None,sorted(list(dict.fromkeys(new_list))))),key=lambda ip:self.__ip2int(ip.split("/")[0]))
+            chunk_size = self.__find_balanced_chunk_size(len(new_list))
+            # get the first and last IP of the CIDR and convert them to integer. Keep 2 lists: one with the first IP and another with the last IP
+            self.__list_chunks = self.__split_list(new_list,chunk_size)
+            self.__first_ip_chunks = self.__split_list([self.__ip2int(item.split("/")[0]) for item in new_list],chunk_size)
+            self.__last_ip_chunks = self.__split_list([int(ipaddress.ip_network(item,strict=False)[-1]) for item in new_list],chunk_size)
+            self.__list_index.clear()
+            for item in self.__first_ip_chunks:
+                self.__list_index.append(item[0])
+        except Exception as ERR: 
+            self.debug(f"Exception at NoLimitList.__process_list: {str(ERR)}")
+            return []
         self.__clear_check_ip_cache()
         return new_list
     def set_list(self,items:List[str]):
@@ -140,16 +165,18 @@ class NoLimitList:
     def get_list(self)->List[str]:
         """Get the current no limit list"""
         return list(self.__data)  # retorna cópia
-    def add_ip(self,ipaddr:str):
+    def add_ip(self,ipaddr:str)->bool:
         """Add an ip address or CIDR to no limit list"""
         try:
             ip = ipaddr.strip()
             if ip and ip not in self.__data:
                 self.__data.append(ip)
                 self.__data = self.__process_list(self.__data)
+                return True
         except Exception as ERR: 
-            print(f"Exception at add_ip: {str(ERR)}")
-    def add_ips(self,ipaddr_list:List[str]):
+            self.debug(f"Exception at NoLimitList.add_ip: {str(ERR)}")
+        return False
+    def add_ips(self,ipaddr_list:List[str])->bool:
         """Add a list of ip addressess or CIDRs to no limit list"""
         try:
             for ip in ipaddr_list:
@@ -157,18 +184,22 @@ class NoLimitList:
                 if ip and ip not in self.__data:
                     self.__data.append(ip)
             self.__data = self.__process_list(self.__data)
+            return True
         except Exception as ERR: 
-            print(f"Exception at add_ips: {str(ERR)}")
-    def remove_ip(self,ipaddr:str):
+            self.debug(f"Exception at NoLimitList.add_ips: {str(ERR)}")
+        return False
+    def remove_ip(self,ipaddr:str)->bool:
         """Remove an ip address or a CIDR from no limit list"""
         try:
             ip = ipaddr.strip()
             if ip and ip in self.__data:
                 self.__data.remove(ip)
                 self.__data = self.__process_list(self.__data)
+                return True
         except Exception as ERR: 
-            print(f"Exception at remove_ip: {str(ERR)}")
-    def remove_ips(self,ipaddr_list:List[str]):
+            self.debug(f"Exception at NoLimitList.remove_ip: {str(ERR)}")
+        return False
+    def remove_ips(self,ipaddr_list:List[str])->bool:
         """Remove a list of ip addressess or a CIDRs from no limit list"""
         try:
             for ip in ipaddr_list:
@@ -179,8 +210,10 @@ class NoLimitList:
                     except Exception:
                         pass
             self.__data = self.__process_list(self.__data)
+            return True
         except Exception as ERR: 
-            print(f"Exception at remove_ips: {str(ERR)}")
+            self.debug(f"Exception at NoLimitList.remove_ips: {str(ERR)}")
+        return False
     def check_ipaddr(self,ipaddr:str)->bool:
         """Check if an IP address is in the no limit list. Returns a tuple with the search response (True or False) and if True, 
            it also returns the network that the IP fits into, otherwise it returns None. (Elapsed average time: 0.000006)
@@ -191,7 +224,7 @@ class NoLimitList:
             
            `no_limit_result` can be True or False and `no_limit_network` can be a network CIDR or None
            """
-        return self.check_iplong(self.__ip2int(ipaddr.strip()))
+        return self.check_iplong(self.__ip2int(ipaddr))
     def check_iplong(self,iplong:int)->tuple:
         """Check if an "IP address as integer (iplong)" is in the no limit list. Returns a tuple with the search response (True or False) and if True, 
            it also returns the network that the IP fits into, otherwise it returns None. (Elapsed average time: 0.000002)
@@ -215,7 +248,7 @@ class NoLimitList:
             network = None if inside_network is False else network
             return inside_network, network
         except Exception as ERR:
-            print(f"Failed at NoLimitList.check_iplong({iplong}): {str(ERR)}")
+            self.debug(f"Failed at NoLimitList.check_iplong({iplong}): {str(ERR)}")
         return False, None
 
 class FastRateLimiter():
@@ -257,7 +290,7 @@ class FastRateLimiter():
         self.__rate_limit = rate_limit
         self.__per = per
         self.__block_time = block_time
-        self.no_limit_list = NoLimitList(no_limit_list=no_limit_list,lru_cache_maxsize=lru_cache_maxsize)
+        self.no_limit_list = NoLimitList(no_limit_list=no_limit_list,lru_cache_maxsize=lru_cache_maxsize,debug=debug)
         if len(self.no_limit_list.last_discarted_ips):
             self.__debug(f"NoLimitList discarted IPs/CIDRs: {self.no_limit_list.last_discarted_ips}")
         self.__debug(f"NoLimitList valid IPs/CIDRs: {self.no_limit_list}")
@@ -419,10 +452,11 @@ class FastRateLimiter():
             self.__rate_limit_stats[ip] = 1
 
     def __save_stat_enabled_advanced(self,ip:int):
-        if ip in self.__rate_limit_stats:
-            self.__rate_limit_stats[ip] += 1
-        else:
-            self.__rate_limit_stats[ip] = 1
+        with self.__lock:
+            if ip in self.__rate_limit_stats:
+                self.__rate_limit_stats[ip] += 1
+            else:
+                self.__rate_limit_stats[ip] = 1
             
     def get_stats(self,top_items:int=10,reset_stats:bool=False)->Dict:
         """Returns a dictionary with the top {top_items} IPs that exceeded the rate limit.
@@ -531,7 +565,7 @@ class FastRateLimiter():
     def __worker_cache_cleanup_advanced(self):
         """Worker that cleans up the cache every 0.1 seconds."""
         while True:
-            time.sleep(0.5)
+            time.sleep(0.1)
             with self.__lock:
                 self.__rate_limit_cache = {k:v for k,v in self.__rate_limit_cache.items() if v[1] >= time.time()}
 
@@ -574,15 +608,18 @@ class FastRateLimiter():
             return self.__int2ip(random.randint(16777216,3758096383))        
         def randomipv6():
             return ':'.join([f'{random.randint(0, 0xffff):04x}' for _ in range(8)])
+        if max_ips < 10:
+            raise ValueError("The maximum number of IPs must be greater than or equal to 10.") from None    
         self.__save_stat = self.__save_stat_disabled
         start_time = time.monotonic()
-        print(f">>> Creating an IP addresses list with {max_ips} randomic IPv4/IPv6 addressess...",end="")
-        ipaddr_list = [random.choice([randomipv4(),randomipv6()]) for _ in range(max_ips)]
-        print(f"\r>>> IP addresses list with {max_ips} randomic IPv4/IPv6 addressess done in {'%.2f'%(time.monotonic()-start_time)} seconds")
+        print(f">>> Creating an IP addresses list with {'{:,d}'.format(max_ips).replace(',','.')} randomic IPv4/IPv6 addressess...",end="")
+        ipaddr_list = [random.choice([randomipv4(),randomipv6()]) for _ in range(int(max_ips/10))]
+        ipaddr_list = ipaddr_list * 10
+        print(f"\r>>> IP addresses list with {'{:,d}'.format(max_ips).replace(',','.')} randomic IPv4/IPv6 addressess done in {'%.2f'%(time.monotonic()-start_time)} seconds")
         ##──── FIRST TEST SHOWING RESULT OUTPUT ──────────────────────────────────────────────────────────────────────────────────────────
         self.cache_clear()
         start_time = time.monotonic()
-        print(f">>> First Test with {'{:,d}'.format(max_ips).replace(',','.')} randomic IPv4/IPv6 (output result)")
+        print(f">>> First Test with {'{:,d}'.format(max_ips).replace(',','.')} randomic IPv4/IPv6 (with output, stats disabled, debug disabled)")
         for num,ipaddr in enumerate(ipaddr_list,1):
             result = self.__call__(ipaddr)
             print(f"\rTesting {num}/{max_ips}... {result}",end="")
@@ -593,8 +630,8 @@ class FastRateLimiter():
         ##──── SECOND TEST WITH NO OUTPUT ────────────────────────────────────────────────────────────────────────────────────────────────
         self.cache_clear()
         start_time = time.monotonic()
-        print(f">>> Second Test with {'{:,d}'.format(max_ips).replace(',','.')} randomic IPv4/IPv6 (no output)")
-        for num,ipaddr in enumerate(ipaddr_list,1):
+        print(f">>> Second Test with {'{:,d}'.format(max_ips).replace(',','.')} randomic IPv4/IPv6 (no output, stats disabled, debug disabled)")
+        for ipaddr in ipaddr_list:
             result = self.__call__(ipaddr)
         total_time_spent = time.monotonic() - start_time
         current_lookups_per_second = max_ips / total_time_spent
