@@ -1,4 +1,4 @@
-# FastRateLimiter v1.0.3
+# FastRateLimiter v1.1.0
 
 `FastRateLimiter` is a high-performance and decorator-free rate limit class for Python. Features:
 
@@ -10,7 +10,9 @@
 
 - It works with a rate limit per second or in an advanced mode where you define the evaluation time and the blocking time, for example: 10 accesses in 5 seconds, receives a 5-second block;
 
-- It has the NoLimitList, a list of IPs or network blocks (CIDR) where the listed IPs will not suffer limits. The average response time of this list is 0.000005 second regardless of the list size;
+- It has the NoLimitList, a list of IPs or network blocks (CIDR) where the listed IPs will not suffer limits. The average response time of this list is 0.000005 second regardless of the list size, and this list can be modified at runtime, allowing you to add or remove IPs or CIDRs without having to recreate the `FastRateLimiter` object;
+
+- The NoLimitList (after version 1.1.0) can normalize invalid CIDRs, so you can add `10.10.10.10/8` and it will be converted to `10.0.0.0/8` automatically and will avoid CIDRs overlapping, if you add `10.0.0.0/8` and try to add `10.10.10.0/24`, it will be rejected.
 
 - Can generate statistics on how many times a given IP has been blocked;
 
@@ -38,11 +40,14 @@ else:
 
 - Works on Linux, MacOS and Windows;
 
-- No external dependencies, is Pure Python!
+- No external dependencies, is Pure Python! you can just copy the `fastratelimiter.py` file to your project and use it without installing anything;
 
 ---
 
 ```
+What's new in v1.1.0 - 11/July/2025
+- The NoLimitList class was completely rewritten (based on UnlimitedIPList https://github.com/rabuchaim/UnlimitedIPList), now it is faster and more efficient, can normalize invalid CIDRs and avoid CIDRs overlapping.
+
 What's new in v1.0.3 - 22/Jun/2025
 - Only cosmetic changes, nothing that impacts functionality
 - Fix in speed_test() function
@@ -84,11 +89,13 @@ For most uses, you do not need to change any class parameters.
 | `cache_cleanup_interval`              | `int`         | `3`                         | Interval in seconds to automatically clean up stale cache entries |
 | `lru_cache_maxsize`                   | `int`         | `512`                       | Maximum size of the LRU cache used to store cache for some functions (IP access check is never cached) |
 | `debug`                               | `bool`        | `False`                     | Enable the debug messages. When enabled, this parameter overrides the checking of the FASTRATELIMITER_DEBUG environment variable. |
+| `normalize_invalid_cidr`              | `bool`        | `False`                     | Enable the normalization of invalid CIDRs. When enabled, the library will attempt to fix any invalid CIDRs before using them. |
 
-For debugging, export the environment variable like below:
+For debugging, you can also export the environment variable as shown below:
 
-
-```export FASTRATELIMITER_DEBUG=1```
+```bash
+export FASTRATELIMITER_DEBUG=1
+```
 
 ### Class Parameters Instructions
 
@@ -98,9 +105,17 @@ For debugging, export the environment variable like below:
 
 - `block_time`: Specify the blocking time if an IP reaches the number specified in the `rate_limit` parameter within the time window specified in the `per` parameter. If you specify 0, the IP will be released as soon as the current second changes. **You can change this value at any time without having to recreate the object.**
 
+- `debug`: If you want to enable the debug mode, set this parameter to True or export the environment variable `FASTRATELIMITER_DEBUG=1`. **You can enable debugging using the environment variable any time without having to recreate the object.** 
+
+    - The debug messages will be printed to the console and will include information about blocked IPs, access granted, and other relevant details.
+
+- `normalize_invalid_cidr`: If you want to enable the normalization of invalid CIDRs of NoLimitList, set this parameter to True.
+
 - `no_limit_list`: Here you can enter the IPs or network blocks (CIDR) that will be exempt from the rate limit check, that is, you can make as many calls as you want without being blocked and they will not be included in the statistics. **You can add or remove IPs from this list at runtime.** Ex: `['1.1.1.1','2.2.2.2/32','3.3.3.0/24','10.0.0.0/8']`. 
 
     >> Attention: `10.0.0.10/8` is AN INVALID CIDR - `10.0.0.0/8` is A VALID CIDR - `10.0.0.10/32` is A VALID CIDR.
+
+    >> From version 1.1.0, the NoLimitList can normalize invalid CIDRs, so you can add `10.10.10.10/24` and it will be converted to `10.10.10.0/24`. And automatically will avoid CIDRs overlapping, if you add `10.10.10.0/24` and try to add `10.10.10.10/32`, it will be rejected.
 
     - **NoLimitList Management**: The `FastRateLimiter.no_limit_list` is a list-type object to manage the list of allowed networks and perform quick searches. **You can add or remove IPs from this list at runtime.**
 
